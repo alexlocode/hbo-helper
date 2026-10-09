@@ -1,6 +1,7 @@
 export interface GameSample {
   timestamp: number
   character: string | null
+  profession: string | null
   level: number | null
   experience: number
   experienceRequired: number

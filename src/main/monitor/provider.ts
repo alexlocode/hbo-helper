@@ -48,6 +48,8 @@ export class WindowsGameProvider implements GameDataProvider {
         }
         const sample = message.sample as GameSample
         if (message.type !== 'sample' || !sample ||
+            !(sample.character === null || typeof sample.character === 'string') ||
+            !(sample.profession === null || typeof sample.profession === 'string') ||
             !Number.isFinite(sample.timestamp) || !Number.isFinite(sample.experience) ||
             !Number.isFinite(sample.earnedExperience) ||
             !Number.isFinite(sample.experienceRequired) || sample.experienceRequired <= 0 ||

@@ -1,5 +1,20 @@
 import { useEffect, useState } from 'react'
 import type { MonitorSnapshot } from '../../shared/types'
+import warriorIcon from './assets/professions/warrior.jpg'
+import mageIcon from './assets/professions/mage.jpg'
+import archerIcon from './assets/professions/archer.jpg'
+import healerIcon from './assets/professions/healer.jpg'
+import rogueIcon from './assets/professions/rogue.jpg'
+import illusionistIcon from './assets/professions/illusionist.jpg'
+
+const professionIcons: Record<string, string> = {
+  '戰士': warriorIcon,
+  '仙法師': mageIcon,
+  '射手': archerIcon,
+  '治療師': healerIcon,
+  '盜賊': rogueIcon,
+  '幻術師': illusionistIcon
+}
 
 const number = (value: number) => Math.round(value).toLocaleString('zh-TW')
 const eta = (seconds: number | null) => {
@@ -30,28 +45,48 @@ export default function App() {
   }
 
   const sample = snapshot?.sample
+  const professionIcon = sample?.profession ? professionIcons[sample.profession] : undefined
   const progress = sample ? Math.min(100, sample.experience / sample.experienceRequired * 100) : 0
   const elapsed = snapshot?.startedAt && sample ? Math.max(0, Math.floor((sample.timestamp - snapshot.startedAt) / 60_000)) : 0
+  const phase = snapshot?.status.phase
+  const running = snapshot?.status.running ?? false
+  const stateLabel = phase === 'connecting' ? '同步中' : phase === 'error' ? '讀取中斷' : running ? '監測中' : sample ? '已停止' : '尚未開始'
+  const stateHint = running ? `每 ${snapshot!.status.intervalMs / 1000} 秒更新角色資料與升級進度。` : phase === 'connecting' ? '正在同步最新角色資料，完成後建立新的統計起點。' : sample ? '資料已停止更新，重新開始會同步當下資料並重設統計。' : '先開啟遊戲並登入角色，再按「開始監測」。'
   return <div className="shell">
     <aside>
       <div className="brand"><span className="brand-icon">H</span><div>HBO Helper<small>冒險紀錄助手</small></div></div>
       <div className="nav-caption">工作空間</div>
       <div className="nav-item active"><span>◈</span> 即時監測</div>
-      <div className="aside-bottom"><span className="dot amber" /> 遊戲即時讀取<br /><small>v0.2.0 · 指標監測</small></div>
+      <div className="aside-bottom"><span className="dot amber" /> 遊戲即時讀取<br /><small>v0.3.3 · 指標監測</small></div>
     </aside>
     <main>
-      <header><div><div className="eyebrow">HOLY BEAST ONLINE</div><h1>掌握每一次成長</h1><p>經驗、收益與升級進度，一眼看清。</p></div><div className="status"><span className={'dot ' + (snapshot?.status.running ? 'green' : 'muted')} />{snapshot?.status.phase === 'connecting' ? '同步中' : snapshot?.status.phase === 'error' ? '讀取中斷' : snapshot?.status.running ? '監測中' : '尚未開始'}</div></header>
-      <div className="notice"><span>✧</span><div><strong>{snapshot?.status.running ? '正在讀取遊戲即時數據' : snapshot?.status.phase === 'connecting' ? '正在同步最新角色資料' : snapshot?.status.phase === 'error' ? '讀取已停止' : sample ? '監測已停止' : '等待連接遊戲'}</strong><p>{snapshot?.status.running ? '每秒更新經驗與升級進度。角色名稱與金幣尚未定位，暫不顯示。' : snapshot?.status.phase === 'connecting' ? '正在尋找遊戲程序並驗證角色指標，完成後建立新的統計起點。' : sample ? '畫面保留最後一次讀取結果。重新開始會同步當下資料並重設統計。' : '先開啟 Holy Beast Online 並登入角色，再按「開始監測」取得當下資料。'}</p></div></div>
       {(error || snapshot?.status.error) && <div className="error" role="alert">{error || snapshot?.status.error}</div>}
-      <section className="character panel">
-        <div className="avatar">H</div><div className="character-name"><small>目前角色</small><h2>{sample?.character ?? '角色名稱未取得'}</h2></div>
+      <section className={`character panel ${running ? 'is-running' : phase === 'connecting' ? 'is-connecting' : phase === 'error' ? 'is-error' : ''}`} aria-label={`角色資訊 · ${stateLabel}`}>
+        <div className="character-row">
+        <div className={`avatar ${professionIcon ? 'has-profession' : 'is-empty'}`} aria-hidden="true">{professionIcon && <img src={professionIcon} alt="" />}</div><div className="character-name"><small>目前角色 <span className="character-state" role="status">{stateLabel}</span></small><h2>{sample?.character ?? '角色名稱未取得'}</h2></div>
+        <div className="character-meta">
+        <div className="level"><small>職業</small><strong>{sample?.profession ?? '未取得'}</strong></div>
         <div className="level"><small>等級</small><strong>{sample?.level ?? '—'}</strong></div>
+        </div>
         <button disabled={busy || !snapshot} onClick={() => void toggle()}>{busy ? '同步中…' : snapshot?.status.running ? '停止監測' : '開始監測'}</button>
+        </div>
+        <p className="character-hint">{stateHint}</p>
       </section>
       <section className="metrics">
-        <article className="panel metric"><small>最近 10 分鐘經驗</small><strong>{sample && snapshot ? number(snapshot.experience10m) : '—'}</strong><span>EXP <i>滾動統計</i></span></article>
-        <article className="panel metric"><small>最近 30 分鐘經驗</small><strong>{sample && snapshot ? number(snapshot.experience30m) : '—'}</strong><span>EXP <i>滾動統計</i></span></article>
-        <article className="panel metric"><small>本次金幣淨變化</small><strong className="gold">{snapshot?.goldSession != null ? (snapshot.goldSession >= 0 ? '+' : '') + number(snapshot.goldSession) : '未取得'}</strong><span>GOLD <i>目前持有 {sample?.gold != null ? number(sample.gold) : '未取得'}</i></span></article>
+        <article className="panel metric-group" aria-labelledby="recent-heading">
+          <div className="group-heading"><h2 id="recent-heading">近期經驗統計</h2><span>滾動視窗</span></div>
+          <div className="group-values">
+            <div className="metric"><small>最近 10 分鐘</small><strong>{sample && snapshot ? number(snapshot.experience10m) : '—'}</strong><span>EXP</span></div>
+            <div className="metric"><small>最近 30 分鐘</small><strong>{sample && snapshot ? number(snapshot.experience30m) : '—'}</strong><span>EXP</span></div>
+          </div>
+        </article>
+        <article className="panel metric-group" aria-labelledby="session-heading">
+          <div className="group-heading"><h2 id="session-heading">本次監測總累計</h2><span>{elapsed} 分鐘</span></div>
+          <div className="group-values">
+            <div className="metric"><small>累計經驗</small><strong>{sample && snapshot ? number(snapshot.experienceSession) : '—'}</strong><span>EXP</span></div>
+            <div className="metric"><small>金幣淨變化</small><strong className="gold">{snapshot?.goldSession != null ? (snapshot.goldSession >= 0 ? '+' : '') + number(snapshot.goldSession) : '未取得'}</strong><span>GOLD</span></div>
+          </div>
+        </article>
       </section>
       <section className="panel progress-panel">
         <div className="section-heading"><h2>升級進度</h2><strong>{sample ? progress.toFixed(2) : '—'}<small>%</small></strong></div>
@@ -59,7 +94,7 @@ export default function App() {
         <div className="progress-label"><span>{sample ? number(sample.experience) : '—'} / {sample ? number(sample.experienceRequired) : '—'} EXP</span><span>還差 {sample ? number(Math.max(0, sample.experienceRequired - sample.experience)) : '—'}</span></div>
         <div className="details"><div><small>每小時經驗估計</small><strong>{snapshot?.experiencePerHour != null ? number(snapshot.experiencePerHour) : '累積資料中'}</strong></div><div><small>預估升級時間</small><strong>{eta(snapshot?.etaSeconds ?? null)}</strong></div><div><small>本次累積經驗</small><strong>{sample && snapshot ? number(snapshot.experienceSession) : '—'}</strong></div></div>
       </section>
-      <footer><span>{snapshot?.status.running ? `每秒取樣 · 已累積 ${elapsed} 分鐘 · PID ${sample?.processId ?? "—"}` : "尚未監測或已停止更新"} · 未滿視窗長度時，以本次已有資料計算</span><span>{sample ? new Date(sample.timestamp).toLocaleTimeString('zh-TW', { hour12: false }) : '—'}</span></footer>
+      <footer><span>{snapshot?.status.running ? `每 ${snapshot.status.intervalMs / 1000} 秒取樣 · 已累積 ${elapsed} 分鐘 · PID ${sample?.processId ?? "—"}` : "尚未監測或已停止更新"} · 未滿視窗長度時，以本次已有資料計算</span><span>{sample ? new Date(sample.timestamp).toLocaleTimeString('zh-TW', { hour12: false }) : '—'}</span></footer>
     </main>
   </div>
 }

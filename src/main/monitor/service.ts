@@ -12,7 +12,7 @@ export class MonitorService {
   private starting: Promise<MonitorSnapshot> | null = null
   private phase: MonitorStatus['phase'] = 'idle'
   private error: string | null = null
-  private readonly intervalMs = 1000
+  private readonly intervalMs = 5000
 
   async initialize(): Promise<void> {}
   snapshot(): MonitorSnapshot {

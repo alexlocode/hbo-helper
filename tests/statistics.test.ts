@@ -4,7 +4,7 @@ import { earnedInWindow, sessionStatistics } from '../src/main/monitor/statistic
 import type { GameSample } from '../src/shared/types.ts'
 
 function sample(timestamp: number, earnedExperience: number, experience = 100, level = 40): GameSample {
-  return { timestamp, earnedExperience, experience, level, character: 'Test', experienceRequired: 1000, gold: 100 }
+  return { timestamp, earnedExperience, experience, level, character: 'Test', profession: null, experienceRequired: 1000, gold: 100 }
 }
 
 test('rolling window uses the sample at the window boundary', () => {

@@ -23,6 +23,7 @@ public static class HboReader {
   static ulong moduleBase;
   static uint? previousExperience, previousRequired;
   static ulong? previousObject;
+  static string previousCharacter;
   static long earned;
 
   static uint Config(string key) { return Convert.ToUInt32(profile[key]); }
@@ -46,6 +47,63 @@ public static class HboReader {
       found = entry.Key;
     }
     return found;
+  }
+  public static byte[] ReadString(ulong address, int maxBytes, Func<ulong,int,byte[]> read) {
+    byte[] value = read(address,24);
+    uint length = BitConverter.ToUInt32(value,16), capacity = BitConverter.ToUInt32(value,20);
+    if (length == 0 || length > maxBytes || capacity < length || capacity > 4096) return null;
+    if (capacity < 16) {
+      if (length > 15 || value[length] != 0) return null;
+      byte[] result = new byte[length]; Array.Copy(value,result,(int)length); return result;
+    }
+    uint pointer = BitConverter.ToUInt32(value,0);
+    if (pointer < 0x10000 || (ulong)pointer + length > uint.MaxValue) return null;
+    byte[] heap = read(pointer,(int)length+1);
+    if (heap[length] != 0) return null;
+    byte[] text = new byte[length]; Array.Copy(heap,text,(int)length); return text;
+  }
+  static string DecodeName(byte[] bytes) {
+    if (bytes == null) return null;
+    try {
+      string value = new UTF8Encoding(false,true).GetString(bytes);
+      foreach (char c in value) if (char.IsControl(c) || char.IsWhiteSpace(c)) return null;
+      return value;
+    } catch (DecoderFallbackException) { return null; }
+  }
+  public static string ReadProfession(ulong baseAddress, uint rootRva, uint actorOffset,
+      uint nameOffset, uint professionOffset, string expectedName,
+      Dictionary<string,object> names, Func<ulong,int,byte[]> read) {
+    if (expectedName == null) return null;
+    ulong actorSlot = Resolve(baseAddress,rootRva,actorOffset,read);
+    uint actor = BitConverter.ToUInt32(read(actorSlot,4),0);
+    if (actor < 0x10000 || (actor & 3) != 0 || (ulong)actor + Math.Max(nameOffset+32,professionOffset+2) > uint.MaxValue) return null;
+    byte[] nameBuffer = read((ulong)actor+nameOffset,32);
+    int end = Array.IndexOf(nameBuffer,(byte)0);
+    if (end <= 0) return null;
+    byte[] nameBytes = new byte[end]; Array.Copy(nameBuffer,nameBytes,end);
+    if (DecodeName(nameBytes) != expectedName) return null;
+    short code = BitConverter.ToInt16(read((ulong)actor+professionOffset,2),0);
+    // Reject an actor replacement during the read rather than mixing two roles.
+    if (BitConverter.ToUInt32(read(actorSlot,4),0) != actor ||
+        Resolve(baseAddress,rootRva,actorOffset,read) != actorSlot) return null;
+    byte[] confirmedName = read((ulong)actor+nameOffset,32);
+    for (int i=0; i<=end; i++) if (confirmedName[i] != nameBuffer[i]) return null;
+    object label;
+    return names.TryGetValue(code.ToString(System.Globalization.CultureInfo.InvariantCulture),out label) ? (string)label : null;
+  }
+  static void Identity(out string character, out string profession) {
+    character = null; profession = null;
+    // Read only the name member of the application object, never account fields.
+    ulong nameAddress = Resolve(moduleBase,Config("identityRootRva"),Config("identityNameOffset"),Read);
+    character = DecodeName(ReadString(nameAddress,96,Read));
+    try {
+      profession = ReadProfession(moduleBase,Config("professionRootRva"),Config("professionActorOffset"),
+        Config("professionNameOffset"),Config("professionCodeOffset"),character,
+        (Dictionary<string,object>)profile["professionTable"],Read);
+    } catch (Exception) {
+      // An unavailable or unconfirmed actor must not be presented as a known job.
+      profession = null;
+    }
   }
   public static long Gain(uint before, uint beforeRequired, uint after, uint afterRequired, Dictionary<int,uint> table) {
     if (beforeRequired == afterRequired) {
@@ -79,14 +137,19 @@ public static class HboReader {
       }
       if (previousObject.HasValue && previousObject.Value != first)
         throw new Exception("角色資料位置已改變，請重新開始監測以建立新的統計。");
+      string character, profession;
+      Identity(out character,out profession);
+      if (previousCharacter != null && character != previousCharacter)
+        throw new Exception("角色名稱已改變或無法確認，已停止統計；請重新開始監測。");
       if (previousExperience.HasValue)
         earned += Gain(previousExperience.Value,previousRequired.Value,experience,required,thresholds);
       previousExperience=experience; previousRequired=required; previousObject=first;
+      previousCharacter=character;
       return new {
         type="sample",
         sample=new {
           timestamp=(long)(DateTime.UtcNow-Epoch).TotalMilliseconds,
-          character=(string)null, level=Level(required), experience=experience,
+          character=character, profession=profession, level=Level(required), experience=experience,
           experienceRequired=required, gold=(int?)null, earnedExperience=earned,
           processId=game.Id
         }
@@ -112,7 +175,59 @@ public static class HboReader {
         Gain(100,1000,150,1000,table) != 50) throw new Exception("Experience test failed");
     bool rejected=false; try { Gain(150,1000,100,1000,table); } catch { rejected=true; }
     if (!rejected) throw new Exception("Reset was not rejected");
-    Write(new { type="test",result="PASS",cases=6 });
+    byte[] inline = new byte[24];
+    Array.Copy(Encoding.UTF8.GetBytes("moooo"),inline,5);
+    Array.Copy(BitConverter.GetBytes((uint)5),0,inline,16,4);
+    Array.Copy(BitConverter.GetBytes((uint)15),0,inline,20,4);
+    if (DecodeName(ReadString(0x10000,96,(address,size) => inline)) != "moooo")
+      throw new Exception("Inline name test failed");
+    byte[] heapString = (byte[])inline.Clone();
+    Array.Copy(BitConverter.GetBytes((uint)0x20000),0,heapString,0,4);
+    Array.Copy(BitConverter.GetBytes((uint)31),0,heapString,20,4);
+    if (DecodeName(ReadString(0x10000,96,(address,size) => address == 0x10000 ? heapString : Encoding.UTF8.GetBytes("moooo\0"))) != "moooo")
+      throw new Exception("Heap name test failed");
+    inline[5]=1;
+    if (ReadString(0x10000,96,(address,size) => inline) != null ||
+        DecodeName(new byte[] { 0xe2,0xd8 }) != null)
+      throw new Exception("Invalid name was accepted");
+    Array.Copy(BitConverter.GetBytes((uint)5000),0,inline,16,4);
+    if (ReadString(0x10000,96,(address,size) => inline) != null)
+      throw new Exception("Unbounded name was accepted");
+    var jobs = new Dictionary<string,object> { {"110","戰士"},{"220","盜賊"},{"1000","初心者"} };
+    short jobCode=110;
+    uint actorPointer=0x30000;
+    Func<ulong,int,byte[]> actorRead = (address,size) => {
+      if (address == 0x500000+0x35b914) return BitConverter.GetBytes((uint)0x20000);
+      if (address == 0x20078) return BitConverter.GetBytes(actorPointer);
+      if (address == 0x30124) { byte[] name=new byte[32]; Array.Copy(Encoding.UTF8.GetBytes("moooo"),name,5); return name; }
+      if (address == 0x3014e) return BitConverter.GetBytes(jobCode);
+      throw new Exception("Unexpected profession address");
+    };
+    Func<string,string> readJob = name => ReadProfession(0x500000,0x35b914,0x78,0x124,0x14e,name,jobs,actorRead);
+    if (readJob("moooo") != "戰士" || readJob("other") != null || readJob(null) != null)
+      throw new Exception("Profession identity validation failed");
+    jobCode=220; if (readJob("moooo") != "盜賊") throw new Exception("Profession change failed");
+    jobCode=999; if (readJob("moooo") != null) throw new Exception("Unknown profession accepted");
+    jobCode=-1; if (readJob("moooo") != null) throw new Exception("Invalid profession accepted");
+    actorPointer=0; if (readJob("moooo") != null) throw new Exception("Absent actor accepted");
+    actorPointer=0x30000; jobCode=110;
+    Func<ulong,int,byte[]> changedActorRead = (address,size) => {
+      byte[] value=actorRead(address,size);
+      if (address == 0x3014e) actorPointer=0x40000;
+      return value;
+    };
+    if (ReadProfession(0x500000,0x35b914,0x78,0x124,0x14e,"moooo",jobs,changedActorRead) != null)
+      throw new Exception("Actor changed during sample was accepted");
+    actorPointer=0x30000;
+    int nameReads=0;
+    Func<ulong,int,byte[]> changedNameRead = (address,size) => {
+      byte[] value=actorRead(address,size);
+      if (address == 0x30124 && ++nameReads > 1) value[0]=(byte)'x';
+      return value;
+    };
+    if (ReadProfession(0x500000,0x35b914,0x78,0x124,0x14e,"moooo",jobs,changedNameRead) != null)
+      throw new Exception("Name changed during sample was accepted");
+    Write(new { type="test",result="PASS",cases=20 });
     return 0;
   }
   public static int Main(string[] args) {
