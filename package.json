@@ -1,0 +1,39 @@
+{
+  "name": "hbo-helper",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Holy Beast Online desktop monitoring helper",
+  "main": "out/main/index.js",
+  "author": "hbo-helper",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "npm run build:native && electron-vite dev",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/statistics.test.ts",
+    "build": "npm run build:native && npm run typecheck && electron-vite build",
+    "preview": "electron-vite preview",
+    "pack:win": "npm run build && electron-builder --win --x64",
+    "test:smoke": "npm run build && electron tests/smoke.cjs",
+    "build:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-native.ps1",
+    "test:native": "npm run build:native && native\\bin\\HboReader.exe --self-test",
+    "pack:portable": "npm run pack:win && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-portable.ps1"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "typescript": "7.0.2",
+    "vite": "7.3.7"
+  },
+  "overrides": {
+    "global-agent": "4.1.3"
+  }
+}

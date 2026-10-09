@@ -1,0 +1,20 @@
+appId: tw.hbo.helper
+productName: HBO Helper
+directories:
+  output: dist/${version}
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: native/bin
+    to: native
+asar: true
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
