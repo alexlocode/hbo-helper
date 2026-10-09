@@ -1,3 +1,20 @@
+export interface GameTarget {
+  processId: number
+  startedAt: string
+}
+export interface GameInstance extends GameTarget {
+  windowTitle?: string
+  windowHandle?: string
+  character: string | null
+  profession: string | null
+  level: number | null
+  error: string | null
+  monitorOpen: boolean
+}
+export interface HelperContext {
+  target: GameTarget | null
+  preview: Pick<GameInstance, 'character' | 'profession' | 'level'> | null
+}
 export interface GameSample {
   timestamp: number
   character: string | null
@@ -28,6 +45,10 @@ export interface MonitorSnapshot {
   etaSeconds: number | null
 }
 export interface HelperApi {
+  getContext(): Promise<HelperContext>
+  listGames(): Promise<GameInstance[]>
+  openMonitor(target: GameTarget): Promise<HelperContext>
+  backToEntrance(): Promise<HelperContext>
   getSnapshot(): Promise<MonitorSnapshot>
   start(): Promise<MonitorSnapshot>
   stop(): Promise<MonitorSnapshot>

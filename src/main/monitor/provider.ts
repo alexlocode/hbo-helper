@@ -1,8 +1,31 @@
 import { app } from 'electron'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { join } from 'node:path'
-import type { GameSample } from '../../shared/types'
+import type { GameInstance, GameSample, GameTarget } from '../../shared/types'
+
+function readerPath(): string {
+  return app.isPackaged ? join(process.resourcesPath, 'native', 'HboReader.exe')
+    : join(__dirname, '../../native/bin/HboReader.exe')
+}
+let discovery: ReturnType<typeof execFile> | null = null
+export function stopDiscovery(): void {
+  discovery?.kill()
+  discovery = null
+}
+export function listGames(): Promise<GameInstance[]> {
+  return new Promise((resolve, reject) => {
+    discovery = execFile(readerPath(), ['--list'], { windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024 }, (error, stdout) => {
+      discovery = null
+      try {
+        const message = JSON.parse(stdout.trim().replace(/^\uFEFF/, ''))
+        if (message.type === 'error') throw new Error(message.message)
+        if (error || message.type !== 'games' || !Array.isArray(message.games)) throw new Error('無法偵測遊戲程序。')
+        resolve(message.games)
+      } catch (failure) { reject(failure) }
+    })
+  })
+}
 
 export interface GameDataProvider {
   read(): Promise<GameSample>
@@ -14,6 +37,7 @@ interface PendingRead {
   timer: ReturnType<typeof setTimeout>
 }
 export class WindowsGameProvider implements GameDataProvider {
+  constructor(private readonly target: GameTarget) {}
   private child: ChildProcessWithoutNullStreams | null = null
   private pending: PendingRead | null = null
   private disposed = false
@@ -27,10 +51,7 @@ export class WindowsGameProvider implements GameDataProvider {
   }
   private launch(): void {
     if (process.platform !== 'win32') throw new Error('此讀取功能目前僅支援 Windows。')
-    const path = app.isPackaged
-      ? join(process.resourcesPath, 'native', 'HboReader.exe')
-      : join(__dirname, '../../native/bin/HboReader.exe')
-    this.child = spawn(path, [], { windowsHide: true, stdio: 'pipe' })
+    this.child = spawn(readerPath(), ['--pid', String(this.target.processId), this.target.startedAt], { windowsHide: true, stdio: 'pipe' })
     this.child.on('error', () => this.fail(new Error('無法啟動遊戲讀取模組，請確認解壓縮了完整資料夾。')))
     this.child.on('exit', () => {
       this.fail(new Error('遊戲讀取已中斷，請重新開始監測。'))
@@ -50,6 +71,8 @@ export class WindowsGameProvider implements GameDataProvider {
         if (message.type !== 'sample' || !sample ||
             !(sample.character === null || typeof sample.character === 'string') ||
             !(sample.profession === null || typeof sample.profession === 'string') ||
+            sample.processId !== this.target.processId ||
+            !(sample.gold === null || (Number.isInteger(sample.gold) && sample.gold >= 0 && sample.gold <= 2147483647)) ||
             !Number.isFinite(sample.timestamp) || !Number.isFinite(sample.experience) ||
             !Number.isFinite(sample.earnedExperience) ||
             !Number.isFinite(sample.experienceRequired) || sample.experienceRequired <= 0 ||

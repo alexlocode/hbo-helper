@@ -1,6 +1,6 @@
 {
   "name": "hbo-helper",
-  "version": "0.3.3",
+  "version": "1.0.0",
   "private": true,
   "description": "Holy Beast Online desktop monitoring helper",
   "main": "out/main/index.js",
@@ -14,6 +14,7 @@
     "preview": "electron-vite preview",
     "pack:win": "npm run build && electron-builder --win --x64",
     "test:smoke": "npm run build && electron tests/smoke.cjs",
+    "test:launcher": "npm run build && electron tests/launcher.cjs",
     "build:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-native.ps1",
     "test:native": "npm run build:native && native\\bin\\HboReader.exe --self-test",
     "pack:portable": "npm run pack:win && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-portable.ps1"

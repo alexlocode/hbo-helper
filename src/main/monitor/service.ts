@@ -1,8 +1,9 @@
-import type { GameSample, MonitorSnapshot, MonitorStatus } from '../../shared/types'
+import type { GameSample, GameTarget, MonitorSnapshot, MonitorStatus } from '../../shared/types'
 import { WindowsGameProvider, type GameDataProvider } from './provider'
 import { sessionStatistics } from './statistics'
 
 export class MonitorService {
+  constructor(private readonly target: GameTarget) {}
   private provider: GameDataProvider | null = null
   private samples: GameSample[] = []
   private timer: ReturnType<typeof setInterval> | undefined
@@ -35,7 +36,7 @@ export class MonitorService {
   }
   private async connect(publish: (snapshot: MonitorSnapshot) => void): Promise<MonitorSnapshot> {
     this.provider?.dispose()
-    const provider = this.provider = new WindowsGameProvider()
+    const provider = this.provider = new WindowsGameProvider(this.target)
     const generation = ++this.generation
     this.samples = []
     this.startedAt = null

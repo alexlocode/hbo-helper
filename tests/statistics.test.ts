@@ -25,3 +25,11 @@ test('negative gold changes remain negative; rate waits for sufficient data', ()
   assert.equal(stats.experiencePerHour, null)
   assert.equal(stats.etaSeconds, null)
 })
+test('gold uses the session baseline and keeps unknown endpoints unknown', () => {
+  const first = { ...sample(0, 0), gold: 304 }
+  const last = { ...sample(600_000, 20), gold: 310 }
+  assert.equal(sessionStatistics([first, last]).goldSession, 6)
+  assert.equal(sessionStatistics([last]).goldSession, 0)
+  assert.equal(sessionStatistics([{ ...first, gold: null }, last]).goldSession, null)
+  assert.equal(sessionStatistics([first, { ...last, gold: null }]).goldSession, null)
+})
